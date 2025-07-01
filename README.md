@@ -254,4 +254,4 @@ git log --oneline
 
 ## License
 
-This checkpointing system is provided as-is for use with Claude Code. Feel free to modify and extend it for your needs.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

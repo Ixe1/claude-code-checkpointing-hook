@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Limited metadata size to prevent memory exhaustion (1MB limit)
 - Improved input sanitization for all user-provided data
 
-## [1.0.0] - 2024-12-31
+## [1.0.0] - 2025-07-01
 
 ### Added
 - Initial release of Claude Code Checkpointing Hook

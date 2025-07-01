@@ -43,12 +43,15 @@ This hook integrates with Claude Code to automatically create git checkpoints (s
 # First, source the aliases
 source ~/.claude/hooks/checkpoint-aliases.sh
 
-# Then use:
-restore-checkpoint       # Interactive restoration
-list-checkpoints        # List all checkpoints
-checkpoint-status       # Show statistics
-checkpoint-diff         # Show recent changes
-cleanup-checkpoints     # Clean old checkpoints
+# Then use the ckpt command:
+ckpt restore       # Interactive restoration (or: ckpt r)
+ckpt list          # List all checkpoints (or: ckpt l)
+ckpt status        # Show statistics (or: ckpt st)
+ckpt diff          # Show recent changes (or: ckpt d)
+ckpt clean         # Clean old checkpoints (or: ckpt c)
+ckpt search <term> # Search checkpoints (or: ckpt s <term>)
+ckpt now           # Create manual checkpoint (or: ckpt n)
+ckpt help          # Show all commands (or: ckpt h)
 ```
 
 ## Configuration
@@ -130,13 +133,13 @@ Old checkpoints are cleaned based on retention settings during normal operation.
 ### Manual Cleanup
 ```bash
 # Remove old checkpoints
-cleanup-checkpoints
+ckpt clean
 
 # Preview what would be cleaned
-cleanup-checkpoints --dry-run
+ckpt clean --dry-run
 
 # Remove orphaned repos
-cleanup-checkpoints --orphaned
+ckpt clean --orphaned
 ```
 
 ## Troubleshooting

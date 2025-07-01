@@ -30,12 +30,16 @@ First, source the aliases:
 source ~/.claude/hooks/checkpoint-aliases.sh
 ```
 
-Then use:
+Then use the ckpt command:
 ```bash
-restore-checkpoint       # Interactive restoration
-list-checkpoints        # List all checkpoints
-checkpoint-status       # Show statistics
-checkpoint-diff         # Show recent changes
+ckpt restore       # Interactive restoration (or: ckpt r)
+ckpt list          # List all checkpoints (or: ckpt l)
+ckpt status        # Show statistics (or: ckpt st)
+ckpt diff          # Show recent changes (or: ckpt d)
+ckpt search <term> # Search checkpoints (or: ckpt s <term>)
+ckpt clean         # Clean old checkpoints (or: ckpt c)
+ckpt now           # Create manual checkpoint (or: ckpt n)
+ckpt help          # Show all commands (or: ckpt h)
 ```
 
 ## Configuration
@@ -79,9 +83,9 @@ Old checkpoints are automatically cleaned up based on retention settings.
 
 ### Manual Cleanup
 ```bash
-cleanup-checkpoints              # Clean old checkpoints
-cleanup-checkpoints --dry-run    # Preview what would be cleaned
-cleanup-checkpoints --orphaned   # Remove orphaned repos
+ckpt clean              # Clean old checkpoints
+ckpt clean --dry-run    # Preview what would be cleaned
+ckpt clean --orphaned   # Remove orphaned repos
 ```
 
 ## Troubleshooting

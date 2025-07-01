@@ -2,6 +2,18 @@
 
 Automatic git-based checkpointing system for Claude Code that creates snapshots before file modifications.
 
+## Quick Start
+
+```bash
+# Install
+./install.sh
+
+# Use
+ckpt help     # Show commands
+ckpt list     # List checkpoints  
+ckpt restore  # Restore files
+```
+
 ## Overview
 
 This hook integrates with Claude Code to automatically create git checkpoints (snapshots) of your code before any file modifications. It provides a safety net allowing you to easily restore previous states if needed, without interfering with your main git repository.
@@ -18,13 +30,56 @@ This hook integrates with Claude Code to automatically create git checkpoints (s
 
 ## Installation
 
+### Quick Install (Recommended)
+
+```bash
+# Clone or download this repository, then:
+cd claude-code-checkpointing-hook
+./install.sh
+```
+
+That's it! The installer will:
+- Check for Python 3 and Git
+- Copy all files to `~/.claude/hooks/`
+- Set up the `ckpt` command in your PATH
+- Create default settings
+- Verify the installation
+
+### System Requirements
+- Linux or macOS
+- Python 3.6+
+- Git
+- Bash or Zsh shell
+
+### Manual Installation
+
+If you prefer to install manually:
+
 1. Copy this entire directory to `~/.claude/hooks/`
 2. Ensure the main scripts are at:
    - `~/.claude/hooks/checkpoint-manager.py`
    - `~/.claude/hooks/restore-checkpoint.py`
    - `~/.claude/hooks/cleanup-checkpoints.py`
 3. The `checkpointing/` module should be at `~/.claude/hooks/checkpointing/`
-4. Source the aliases (optional): `source ~/.claude/hooks/checkpoint-aliases.sh`
+4. Create a `ckpt` command by running:
+```bash
+# Create user bin directory if needed
+mkdir -p ~/.local/bin
+
+# Create the executable
+cat > ~/.local/bin/ckpt << 'EOF'
+#!/bin/bash
+source ~/.claude/hooks/checkpoint-aliases.sh
+ckpt "$@"
+EOF
+
+# Make it executable
+chmod +x ~/.local/bin/ckpt
+
+# Add to PATH if needed
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
 
 ## Quick Start
 
@@ -40,9 +95,7 @@ This hook integrates with Claude Code to automatically create git checkpoints (s
 ### Using Shell Commands
 
 ```bash
-# First, source the aliases
-source ~/.claude/hooks/checkpoint-aliases.sh
-
+# First, ensure ckpt is available (see Installation section above)
 # Then use the ckpt command:
 ckpt restore       # Interactive restoration (or: ckpt r)
 ckpt list          # List all checkpoints (or: ckpt l)
@@ -140,6 +193,17 @@ ckpt clean --dry-run
 
 # Remove orphaned repos
 ckpt clean --orphaned
+```
+
+### Uninstalling
+To remove the checkpointing system:
+```bash
+./uninstall.sh
+```
+This preserves your existing checkpoints. To remove everything including checkpoints:
+```bash
+./uninstall.sh
+rm -rf ~/.claude/checkpoints
 ```
 
 ## Troubleshooting

@@ -4,10 +4,14 @@
 import hashlib
 import json
 import os
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+import sys
+
+from .logger import logger
 
 
 class GitCheckpointManager:
@@ -23,19 +27,53 @@ class GitCheckpointManager:
         """Generate a unique hash for the project path."""
         return hashlib.sha256(str(self.project_path).encode()).hexdigest()[:12]
     
+    def _validate_checkpoint_hash(self, checkpoint_hash: str) -> bool:
+        """Validate checkpoint hash format."""
+        if not checkpoint_hash:
+            return False
+        # Git commit hash should be 40 hex characters (or prefix)
+        return bool(re.match(r'^[a-f0-9]{1,40}$', checkpoint_hash.lower()))
+    
+    def _sanitize_path(self, path: Path) -> Path:
+        """Sanitize file path to prevent directory traversal."""
+        # Resolve to absolute path and ensure it's within project
+        resolved = path.resolve()
+        try:
+            resolved.relative_to(self.project_path)
+            return resolved
+        except ValueError:
+            # Path is outside project directory
+            raise ValueError(f"Path {path} is outside project directory")
+    
+    def _validate_metadata_size(self, metadata: Dict) -> bool:
+        """Check if metadata size is within limits."""
+        # Convert to JSON to check size
+        json_str = json.dumps(metadata)
+        # Limit metadata to 1MB
+        return len(json_str.encode('utf-8')) <= 1024 * 1024
+    
     def _run_git(self, args: List[str], cwd: Optional[Path] = None, 
-                 capture_output: bool = True) -> subprocess.CompletedProcess:
-        """Run a git command."""
+                 capture_output: bool = True, timeout: int = 30) -> subprocess.CompletedProcess:
+        """Run a git command with proper error handling."""
         cmd = ['git'] + args
         cwd = cwd or self.project_path
         
-        return subprocess.run(
-            cmd,
-            cwd=str(cwd),
-            capture_output=capture_output,
-            text=True,
-            timeout=30
-        )
+        try:
+            return subprocess.run(
+                cmd,
+                cwd=str(cwd),
+                capture_output=capture_output,
+                text=True,
+                timeout=timeout
+            )
+        except subprocess.TimeoutExpired:
+            # Return a failed result on timeout
+            result = subprocess.CompletedProcess(cmd, 1, '', 'Command timed out')
+            return result
+        except Exception as e:
+            # Return a failed result on other errors
+            result = subprocess.CompletedProcess(cmd, 1, '', str(e))
+            return result
     
     def is_git_repo(self) -> bool:
         """Check if the project directory is a git repository."""
@@ -89,6 +127,16 @@ class GitCheckpointManager:
         if not self.init_checkpoint_repo():
             return None
         
+        # Validate metadata size
+        if not self._validate_metadata_size(metadata):
+            logger.warning("Metadata too large, truncating")
+            # Truncate metadata to essential fields only
+            metadata = {
+                'tool_name': metadata.get('tool_name', ''),
+                'session_id': metadata.get('session_id', ''),
+                'files': metadata.get('files', [])[:10]  # Limit files list
+            }
+        
         worktree_path = self.checkpoint_repo / 'worktree'
         
         try:
@@ -110,13 +158,8 @@ class GitCheckpointManager:
                 # Combine all files
                 all_files = tracked_files | untracked_files
                 
-                for file in all_files:
-                    src = self.project_path / file
-                    dst = worktree_path / file
-                    if src.exists():
-                        dst.parent.mkdir(parents=True, exist_ok=True)
-                        if src.is_file():
-                            dst.write_bytes(src.read_bytes())
+                # Batch process files for better performance
+                self._batch_sync_files(all_files, self.project_path, worktree_path)
             else:
                 # Copy all files (respecting gitignore if present)
                 self._sync_files(self.project_path, worktree_path)
@@ -157,6 +200,40 @@ class GitCheckpointManager:
         except Exception:
             return None
     
+    def _batch_sync_files(self, files: set, src_root: Path, dst_root: Path, batch_size: int = 100):
+        """Sync files in batches for better performance."""
+        import shutil
+        
+        file_list = list(files)
+        total_files = len(file_list)
+        
+        if total_files > 100:
+            logger.info(f"Syncing {total_files} files to checkpoint...")
+        
+        for i in range(0, total_files, batch_size):
+            batch = file_list[i:i + batch_size]
+            
+            for file in batch:
+                src = src_root / file
+                dst = dst_root / file
+                
+                if src.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    if src.is_file():
+                        try:
+                            # Use shutil for better performance on large files
+                            shutil.copy2(src, dst)
+                        except Exception as e:
+                            logger.warning(f"Failed to copy {file}: {e}")
+            
+            # Log progress for large operations
+            if total_files > 100 and (i + batch_size) % 500 == 0:
+                progress = min(100, int((i + batch_size) / total_files * 100))
+                logger.info(f"Progress: {progress}% ({i + batch_size}/{total_files} files)")
+        
+        if total_files > 100:
+            logger.info("File sync completed")
+    
     def _sync_files(self, src: Path, dst: Path):
         """Sync files from source to destination."""
         import shutil
@@ -167,30 +244,50 @@ class GitCheckpointManager:
         if gitignore_path.exists():
             gitignore_patterns = gitignore_path.read_text().strip().split('\n')
         
-        for item in src.iterdir():
-            # Skip hidden files and common ignore patterns
-            if item.name.startswith('.') and item.name not in ['.gitignore']:
-                continue
+        # Collect all files first for batch processing
+        files_to_sync = []
+        
+        def collect_files(current_src: Path, current_dst: Path, base_src: Path):
+            for item in current_src.iterdir():
+                # Skip hidden files and common ignore patterns
+                if item.name.startswith('.') and item.name not in ['.gitignore']:
+                    continue
+                
+                # Skip gitignored patterns (simplified)
+                skip = False
+                for pattern in gitignore_patterns:
+                    if pattern and not pattern.startswith('#'):
+                        if pattern.strip() in str(item.relative_to(base_src)):
+                            skip = True
+                            break
+                
+                if skip:
+                    continue
+                
+                if item.is_dir():
+                    collect_files(item, current_dst / item.name, base_src)
+                else:
+                    files_to_sync.append((item, current_dst / item.name))
+        
+        # Collect all files
+        collect_files(src, dst, src)
+        
+        # Batch sync for better performance
+        total_files = len(files_to_sync)
+        if total_files > 100:
+            logger.info(f"Syncing {total_files} files...")
+        
+        for i, (src_file, dst_file) in enumerate(files_to_sync):
+            dst_file.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_file, dst_file)
             
-            # Skip gitignored patterns (simplified)
-            skip = False
-            for pattern in gitignore_patterns:
-                if pattern and not pattern.startswith('#'):
-                    if pattern.strip() in str(item.relative_to(src)):
-                        skip = True
-                        break
-            
-            if skip:
-                continue
-            
-            dst_item = dst / item.name
-            
-            if item.is_dir():
-                dst_item.mkdir(exist_ok=True)
-                self._sync_files(item, dst_item)
-            else:
-                dst_item.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(item, dst_item)
+            # Progress logging for large operations
+            if total_files > 100 and (i + 1) % 100 == 0:
+                progress = int((i + 1) / total_files * 100)
+                logger.info(f"Progress: {progress}% ({i + 1}/{total_files} files)")
+        
+        if total_files > 100:
+            logger.info("File sync completed")
     
     def list_checkpoints(self) -> List[Dict]:
         """List all checkpoints for the current project."""
@@ -254,11 +351,19 @@ class GitCheckpointManager:
         if not self.checkpoint_repo.exists():
             return False
         
+        # Validate checkpoint hash
+        if not self._validate_checkpoint_hash(checkpoint_hash):
+            print(f"Error: Invalid checkpoint hash format: {checkpoint_hash}", file=sys.stderr)
+            logger.error(f"Invalid checkpoint hash format: {checkpoint_hash}")
+            return False
+        
         worktree_path = self.checkpoint_repo / 'worktree'
         
         # First, checkout the checkpoint in the worktree
         result = self._run_git(['checkout', checkpoint_hash], cwd=worktree_path)
         if result.returncode != 0:
+            print(f"Error: Failed to checkout checkpoint: {result.stderr}", file=sys.stderr)
+            logger.error(f"Failed to checkout checkpoint: {result.stderr}")
             return False
         
         if dry_run:
@@ -281,6 +386,10 @@ class GitCheckpointManager:
         """Get diff between current state and a checkpoint."""
         if not self.checkpoint_repo.exists():
             return ""
+        
+        # Validate checkpoint hash if provided
+        if checkpoint_hash and not self._validate_checkpoint_hash(checkpoint_hash):
+            return f"Error: Invalid checkpoint hash format: {checkpoint_hash}"
         
         worktree_path = self.checkpoint_repo / 'worktree'
         

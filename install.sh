@@ -115,8 +115,9 @@ if [ -f ~/.claude/settings.json ]; then
     python3 << 'EOF'
 import json
 import sys
+import os
 
-settings_path = '/home/developer/.claude/settings.json'
+settings_path = os.path.expanduser('~/.claude/settings.json')
 
 try:
     with open(settings_path, 'r') as f:
@@ -173,7 +174,7 @@ if not pre_exists:
                 hook['hooks'] = []
             hook['hooks'].append({
                 "type": "command",
-                "command": "python3 /home/developer/.claude/hooks/checkpoint-manager.py"
+                "command": "python3 ~/.claude/hooks/checkpoint-manager.py"
             })
             found = True
             break
@@ -183,7 +184,7 @@ if not pre_exists:
             "matcher": "Write|Edit|MultiEdit",
             "hooks": [{
                 "type": "command",
-                "command": "python3 /home/developer/.claude/hooks/checkpoint-manager.py"
+                "command": "python3 ~/.claude/hooks/checkpoint-manager.py"
             }]
         })
 
@@ -197,7 +198,7 @@ if not post_exists:
                 hook['hooks'] = []
             hook['hooks'].append({
                 "type": "command",
-                "command": "python3 /home/developer/.claude/hooks/checkpoint-manager.py --update-status"
+                "command": "python3 ~/.claude/hooks/checkpoint-manager.py --update-status"
             })
             found = True
             break
@@ -207,7 +208,7 @@ if not post_exists:
             "matcher": "Write|Edit|MultiEdit",
             "hooks": [{
                 "type": "command",
-                "command": "python3 /home/developer/.claude/hooks/checkpoint-manager.py --update-status"
+                "command": "python3 ~/.claude/hooks/checkpoint-manager.py --update-status"
             }]
         })
 
@@ -228,7 +229,7 @@ else
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /home/developer/.claude/hooks/checkpoint-manager.py"
+            "command": "python3 ~/.claude/hooks/checkpoint-manager.py"
           }
         ]
       }
@@ -239,7 +240,7 @@ else
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /home/developer/.claude/hooks/checkpoint-manager.py --update-status"
+            "command": "python3 ~/.claude/hooks/checkpoint-manager.py --update-status"
           }
         ]
       }

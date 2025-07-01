@@ -252,6 +252,21 @@ git log --oneline
 - Consider encrypting `~/.claude/checkpoints/` if needed
 - Add sensitive files to exclude patterns
 
+## Testing
+
+Run the test suite:
+```bash
+# From project root
+./run_tests.py
+
+# Or using unittest directly
+python3 -m unittest discover tests -v
+```
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a detailed list of changes between versions.
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

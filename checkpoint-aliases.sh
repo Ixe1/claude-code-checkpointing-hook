@@ -36,7 +36,8 @@ ckpt() {
             local checkpoint_id="$1"
             python3 -c "
 import sys
-sys.path.insert(0, '/home/developer/.claude/hooks')
+import os
+sys.path.insert(0, os.path.expanduser('~/.claude/hooks'))
 from pathlib import Path
 from checkpointing import GitCheckpointManager
 

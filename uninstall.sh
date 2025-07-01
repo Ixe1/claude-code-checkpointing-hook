@@ -33,8 +33,9 @@ if [ -f ~/.claude/settings.json ]; then
     python3 << 'EOF'
 import json
 import sys
+import os
 
-settings_path = '/home/developer/.claude/settings.json'
+settings_path = os.path.expanduser('~/.claude/settings.json')
 
 try:
     with open(settings_path, 'r') as f:

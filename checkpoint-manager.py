@@ -12,7 +12,7 @@ from pathlib import Path
 # Add the hooks directory to Python path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from checkpointing import CheckpointConfig, GitCheckpointManager, CheckpointMetadata
+from checkpointing import CheckpointConfig, GitCheckpointManager, CheckpointMetadata, logger
 
 
 def handle_pre_tool_use(input_data: dict) -> int:
@@ -40,6 +40,7 @@ def handle_pre_tool_use(input_data: dict) -> int:
         file_path = Path(tool_input['file_path'])
         if config.should_exclude_file(file_path):
             print(f"Skipping checkpoint for excluded file: {file_path}", file=sys.stderr)
+            logger.info(f"Skipping checkpoint for excluded file: {file_path}")
             return 0
     
     # Initialize checkpoint manager
@@ -48,7 +49,7 @@ def handle_pre_tool_use(input_data: dict) -> int:
     # Initialize project repo if needed
     if not checkpoint_mgr.is_git_repo():
         if not checkpoint_mgr.init_project_repo():
-            print("Warning: Could not initialize git repository", file=sys.stderr)
+            logger.warning("Could not initialize git repository")
             # Continue anyway - don't block the operation
             return 0
     
@@ -95,9 +96,11 @@ def handle_pre_tool_use(input_data: dict) -> int:
         )
         
         print(f"Created checkpoint: {checkpoint_hash[:8]}", file=sys.stderr)
+        logger.info(f"Created checkpoint: {checkpoint_hash[:8]}")
         return 0
     else:
         print("Warning: Could not create checkpoint", file=sys.stderr)
+        logger.warning("Could not create checkpoint")
         # Don't block the operation
         return 0
 

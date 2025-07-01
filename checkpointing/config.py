@@ -22,7 +22,8 @@ class CheckpointConfig:
         try:
             with open(self.settings_path, 'r') as f:
                 settings = json.load(f)
-                return settings.get('checkpointing', self._default_config())
+                config = settings.get('checkpointing', self._default_config())
+                return self._validate_config(config)
         except (json.JSONDecodeError, IOError):
             return self._default_config()
     
@@ -37,6 +38,45 @@ class CheckpointConfig:
             'auto_cleanup': True
         }
     
+    def _validate_config(self, config: Dict) -> Dict:
+        """Validate and sanitize configuration values."""
+        defaults = self._default_config()
+        validated = {}
+        
+        # Validate enabled (boolean)
+        validated['enabled'] = bool(config.get('enabled', defaults['enabled']))
+        
+        # Validate retention_days (positive integer)
+        retention = config.get('retention_days', defaults['retention_days'])
+        try:
+            retention = int(retention)
+            validated['retention_days'] = max(1, min(retention, 365))  # 1-365 days
+        except (ValueError, TypeError):
+            validated['retention_days'] = defaults['retention_days']
+        
+        # Validate exclude_patterns (list of strings)
+        patterns = config.get('exclude_patterns', defaults['exclude_patterns'])
+        if isinstance(patterns, list):
+            validated['exclude_patterns'] = [str(p) for p in patterns if p]
+        else:
+            validated['exclude_patterns'] = defaults['exclude_patterns']
+        
+        # Validate max_file_size_mb (positive number)
+        max_size = config.get('max_file_size_mb', defaults['max_file_size_mb'])
+        try:
+            max_size = float(max_size)
+            validated['max_file_size_mb'] = max(0.1, min(max_size, 1000))  # 0.1-1000 MB
+        except (ValueError, TypeError):
+            validated['max_file_size_mb'] = defaults['max_file_size_mb']
+        
+        # Validate checkpoint_on_stop (boolean)
+        validated['checkpoint_on_stop'] = bool(config.get('checkpoint_on_stop', defaults['checkpoint_on_stop']))
+        
+        # Validate auto_cleanup (boolean)
+        validated['auto_cleanup'] = bool(config.get('auto_cleanup', defaults['auto_cleanup']))
+        
+        return validated
+    
     @property
     def enabled(self) -> bool:
         """Check if checkpointing is enabled."""
@@ -45,7 +85,7 @@ class CheckpointConfig:
     @property
     def retention_days(self) -> int:
         """Get retention period in days."""
-        return self._config.get('retention_days', 7)
+        return int(self._config.get('retention_days', 7))
     
     @property
     def exclude_patterns(self) -> List[str]:
@@ -53,9 +93,9 @@ class CheckpointConfig:
         return self._config.get('exclude_patterns', [])
     
     @property
-    def max_file_size_mb(self) -> int:
+    def max_file_size_mb(self) -> float:
         """Get maximum file size in MB to include in checkpoints."""
-        return self._config.get('max_file_size_mb', 100)
+        return float(self._config.get('max_file_size_mb', 100))
     
     @property
     def checkpoint_on_stop(self) -> bool:

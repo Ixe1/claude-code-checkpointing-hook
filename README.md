@@ -1,5 +1,13 @@
 # Claude Code Checkpointing Hook
 
+> ⚠️ **BETA SOFTWARE DISCLAIMER**
+> 
+> This tool is currently in beta and has undergone limited testing. It is under active development and may contain bugs or unexpected behavior. 
+> 
+> **USE AT YOUR OWN RISK**: The author takes no responsibility for any data loss, corruption, or other issues that may arise from using this software. Always maintain proper backups of your important work.
+> 
+> Please report issues and contribute to development at the project repository.
+
 Automatic git-based checkpointing system for Claude Code that creates snapshots before file modifications.
 
 ## Quick Start
@@ -82,15 +90,6 @@ source ~/.bashrc
 ```
 
 ## Quick Start
-
-### Using Claude Code Commands
-
-```bash
-/restore                  # Interactive restoration
-/restore abc123          # Restore specific checkpoint
-/checkpoints             # List all checkpoints
-/checkpoint-diff         # Show changes since last checkpoint
-```
 
 ### Using Shell Commands
 

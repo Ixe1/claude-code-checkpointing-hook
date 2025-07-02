@@ -14,8 +14,18 @@ fi
 
 echo "Removing checkpointing system..."
 
-# Remove hook directory
-rm -rf ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/
+# Remove hook files but preserve checkpoints
+HOOK_DIR="$HOME/.claude/hooks/ixe1/claude-code-checkpointing-hook"
+
+# Remove all files in the hook directory
+find "$HOOK_DIR" -maxdepth 1 -type f -exec rm -f {} \;
+
+# Remove all directories except checkpoints
+for dir in "$HOOK_DIR"/*; do
+    if [ -d "$dir" ] && [ "$(basename "$dir")" != "checkpoints" ]; then
+        rm -rf "$dir"
+    fi
+done
 
 # Remove empty author directory if no other hooks exist
 if [ -d ~/.claude/hooks/ixe1 ] && [ -z "$(ls -A ~/.claude/hooks/ixe1)" ]; then
@@ -92,7 +102,7 @@ EOF
 fi
 
 echo
-echo "Your checkpoints are preserved in: ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoints/"
-echo "To remove them, run: rm -rf ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoints"
-echo
 echo "✅ Uninstall complete!"
+echo
+echo "Your checkpoints are preserved in: ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoints/"
+echo "To remove them, run: rm -rf ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/"

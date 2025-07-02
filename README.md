@@ -210,7 +210,7 @@ To remove the checkpointing system:
 This preserves your existing checkpoints. To remove everything including checkpoints:
 ```bash
 ./uninstall.sh
-rm -rf ~/.claude/checkpoints
+rm -rf ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/
 ```
 
 ## Troubleshooting
@@ -221,8 +221,8 @@ rm -rf ~/.claude/checkpoints
 - Ensure git is installed: `which git`
 
 ### Checkpoint creation failed
-- Check disk space: `df -h ~/.claude/checkpoints`
-- Verify permissions: `ls -la ~/.claude/checkpoints`
+- Check disk space: `df -h ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoints`
+- Verify permissions: `ls -la ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoints`
 - Check exclude patterns in settings
 
 ### Can't restore checkpoint
@@ -246,10 +246,10 @@ python3 ~/.claude/hooks/checkpoint-manager.py
 ### Direct Shadow Repo Access
 ```bash
 # Find your project's shadow repo
-ls ~/.claude/checkpoints/
+ls ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoints/
 
 # Examine checkpoint history
-cd ~/.claude/checkpoints/{project_hash}
+cd ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoints/{project_hash}
 git log --oneline
 ```
 
@@ -257,7 +257,7 @@ git log --oneline
 
 - Checkpoints may contain sensitive data (API keys, passwords)
 - Shadow repos have same permissions as your user account
-- Consider encrypting `~/.claude/checkpoints/` if needed
+- Consider encrypting `~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoints/` if needed
 - Add sensitive files to exclude patterns
 
 ## Testing

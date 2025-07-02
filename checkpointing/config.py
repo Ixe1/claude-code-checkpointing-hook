@@ -8,21 +8,26 @@ from typing import Dict, List, Optional
 
 
 class CheckpointConfig:
-    """Manages checkpoint configuration from settings.json."""
+    """Manages checkpoint configuration from dedicated config.json file."""
     
-    def __init__(self, settings_path: Optional[Path] = None):
-        self.settings_path = settings_path or Path.home() / ".claude" / "settings.json"
+    def __init__(self, config_path: Optional[Path] = None):
+        # Default to config.json in the hook's directory
+        if config_path is None:
+            # Determine the hook's installation directory
+            hook_dir = Path.home() / ".claude" / "hooks" / "ixe1" / "claude-code-checkpointing-hook"
+            config_path = hook_dir / "config.json"
+        
+        self.config_path = config_path
         self._config = self._load_config()
     
     def _load_config(self) -> Dict:
-        """Load configuration from settings file."""
-        if not self.settings_path.exists():
+        """Load configuration from config file."""
+        if not self.config_path.exists():
             return self._default_config()
         
         try:
-            with open(self.settings_path, 'r') as f:
-                settings = json.load(f)
-                config = settings.get('checkpointing', self._default_config())
+            with open(self.config_path, 'r') as f:
+                config = json.load(f)
                 return self._validate_config(config)
         except (json.JSONDecodeError, IOError):
             return self._default_config()

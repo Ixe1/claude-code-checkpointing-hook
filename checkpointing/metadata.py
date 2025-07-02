@@ -11,7 +11,9 @@ class CheckpointMetadata:
     """Manages checkpoint metadata."""
     
     def __init__(self, checkpoint_base: Optional[Path] = None):
-        self.checkpoint_base = checkpoint_base or Path.home() / ".claude" / "checkpoints"
+        # Default to checkpoints directory within the hook's installation
+        hook_dir = Path.home() / ".claude" / "hooks" / "ixe1" / "claude-code-checkpointing-hook"
+        self.checkpoint_base = checkpoint_base or hook_dir / "checkpoints"
         self.metadata_file = self.checkpoint_base / "metadata.json"
     
     def _load_metadata(self) -> Dict:

@@ -19,7 +19,9 @@ class GitCheckpointManager:
     
     def __init__(self, project_path: Path, checkpoint_base: Optional[Path] = None):
         self.project_path = Path(project_path).resolve()
-        self.checkpoint_base = checkpoint_base or Path.home() / ".claude" / "checkpoints"
+        # Default to checkpoints directory within the hook's installation
+        hook_dir = Path.home() / ".claude" / "hooks" / "ixe1" / "claude-code-checkpointing-hook"
+        self.checkpoint_base = checkpoint_base or hook_dir / "checkpoints"
         self.project_hash = self._get_project_hash()
         self.checkpoint_repo = self.checkpoint_base / self.project_hash
     
@@ -289,6 +291,71 @@ class GitCheckpointManager:
         if total_files > 100:
             logger.info("File sync completed")
     
+    def _full_restore_sync(self, src: Path, dst: Path) -> None:
+        """Full sync for restoration - removes files that don't exist in source."""
+        import shutil
+        
+        # First, collect all files in the checkpoint (source)
+        checkpoint_files = set()
+        
+        def collect_checkpoint_files(current_src: Path, base_src: Path):
+            for item in current_src.iterdir():
+                # Skip hidden files except .gitignore
+                if item.name.startswith('.') and item.name not in ['.gitignore']:
+                    continue
+                    
+                if item.is_dir():
+                    collect_checkpoint_files(item, base_src)
+                else:
+                    # Store relative path
+                    rel_path = item.relative_to(base_src)
+                    checkpoint_files.add(rel_path)
+        
+        # Collect all files in checkpoint
+        collect_checkpoint_files(src, src)
+        
+        # Now collect all files in the project (destination)
+        project_files = set()
+        
+        def collect_project_files(current_dst: Path, base_dst: Path):
+            if not current_dst.exists():
+                return
+                
+            for item in current_dst.iterdir():
+                # Skip hidden files and directories
+                if item.name.startswith('.'):
+                    continue
+                    
+                if item.is_dir():
+                    collect_project_files(item, base_dst)
+                else:
+                    # Store relative path
+                    rel_path = item.relative_to(base_dst)
+                    project_files.add(rel_path)
+        
+        # Collect all files in project
+        collect_project_files(dst, dst)
+        
+        # Find files to delete (in project but not in checkpoint)
+        files_to_delete = project_files - checkpoint_files
+        
+        # Delete files that shouldn't exist
+        for rel_path in files_to_delete:
+            file_path = dst / rel_path
+            if file_path.exists():
+                file_path.unlink()
+                logger.info(f"Removed file not in checkpoint: {rel_path}")
+                print(f"Removed: {rel_path}")
+                
+                # Remove empty directories
+                parent = file_path.parent
+                while parent != dst and parent.exists() and not any(parent.iterdir()):
+                    parent.rmdir()
+                    parent = parent.parent
+        
+        # Now sync files from checkpoint to project
+        self._sync_files(src, dst)
+    
     def list_checkpoints(self) -> List[Dict]:
         """List all checkpoints for the current project."""
         if not self.checkpoint_repo.exists():
@@ -371,15 +438,16 @@ class GitCheckpointManager:
             print(f"Would restore to checkpoint {checkpoint_hash}")
             return True
         
-        # Copy files back to project
+        # Copy files back to project with full restoration (including deletions)
         try:
-            self._sync_files(worktree_path, self.project_path)
+            self._full_restore_sync(worktree_path, self.project_path)
             
             # Switch back to main branch for future operations
             self._run_git(['checkout', 'main'], cwd=worktree_path)
             
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Restoration failed: {e}")
             return False
     
     def get_checkpoint_diff(self, checkpoint_hash: Optional[str] = None) -> str:

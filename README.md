@@ -48,7 +48,7 @@ cd claude-code-checkpointing-hook
 
 That's it! The installer will:
 - Check for Python 3 and Git
-- Copy all files to `~/.claude/hooks/`
+- Copy all files to `~/.claude/hooks/ixe1/claude-code-checkpointing-hook/`
 - Set up the `ckpt` command in your PATH
 - Create default settings
 - Verify the installation
@@ -63,12 +63,12 @@ That's it! The installer will:
 
 If you prefer to install manually:
 
-1. Copy this entire directory to `~/.claude/hooks/`
+1. Copy this entire directory to `~/.claude/hooks/ixe1/claude-code-checkpointing-hook/`
 2. Ensure the main scripts are at:
-   - `~/.claude/hooks/checkpoint-manager.py`
-   - `~/.claude/hooks/restore-checkpoint.py`
-   - `~/.claude/hooks/cleanup-checkpoints.py`
-3. The `checkpointing/` module should be at `~/.claude/hooks/checkpointing/`
+   - `~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-manager.py`
+   - `~/.claude/hooks/ixe1/claude-code-checkpointing-hook/restore-checkpoint.py`
+   - `~/.claude/hooks/ixe1/claude-code-checkpointing-hook/cleanup-checkpoints.py`
+3. The `checkpointing/` module should be at `~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpointing/`
 4. Create a `ckpt` command by running:
 ```bash
 # Create user bin directory if needed
@@ -77,7 +77,7 @@ mkdir -p ~/.local/bin
 # Create the executable
 cat > ~/.local/bin/ckpt << 'EOF'
 #!/bin/bash
-source ~/.claude/hooks/checkpoint-aliases.sh
+source ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-aliases.sh
 ckpt "$@"
 EOF
 
@@ -108,45 +108,52 @@ ckpt help          # Show all commands (or: ckpt h)
 
 ## Configuration
 
-Configure in `~/.claude/settings.json`:
+The checkpointing hook stores its configuration in `~/.claude/hooks/ixe1/claude-code-checkpointing-hook/config.json`:
 
 ```json
 {
-  "checkpointing": {
-    "enabled": true,              // Enable/disable checkpointing
-    "retention_days": 7,          // Keep checkpoints for N days
-    "exclude_patterns": [         // Files to exclude
-      "*.log",
-      "node_modules/",
-      ".env",
-      "__pycache__/"
-    ],
-    "max_file_size_mb": 100      // Skip large files
-  }
+  "enabled": true,              // Enable/disable checkpointing
+  "retention_days": 7,          // Keep checkpoints for N days
+  "exclude_patterns": [         // Files to exclude
+    "*.log",
+    "node_modules/",
+    ".env",
+    "__pycache__/",
+    "*.tmp",
+    ".git/"
+  ],
+  "max_file_size_mb": 100,     // Skip large files
+  "checkpoint_on_stop": false,  // Create checkpoint on Stop hook
+  "auto_cleanup": true          // Automatically clean old checkpoints
 }
 ```
+
+This configuration is separate from Claude's main `settings.json`, which now only contains the hook registration.
 
 ## How It Works
 
 1. **PreToolUse Hook**: Before file modifications, creates a git commit in a shadow repository
-2. **Shadow Repository**: Stored in `~/.claude/checkpoints/{project_hash}/`
+2. **Shadow Repository**: Stored within the hook at `~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoints/{project_hash}/`
 3. **Metadata Tracking**: JSON file stores tool info, session ID, and affected files
 4. **PostToolUse Hook**: Updates checkpoint status based on operation success
 5. **Restoration**: Copies files from shadow repo back to your project
 
 ## File Structure
 
-```
-checkpointing/
-├── __init__.py      # Package initialization
-├── config.py        # Configuration management
-├── git_ops.py       # Git operations wrapper
-└── metadata.py      # Checkpoint metadata handling
+After installation, the hook files are organized as:
 
-checkpoint-manager.py     # Main hook script
-restore-checkpoint.py    # Interactive restoration tool
-cleanup-checkpoints.py   # Maintenance utility
-checkpoint-aliases.sh    # Convenient shell aliases
+```
+~/.claude/hooks/ixe1/claude-code-checkpointing-hook/
+├── checkpointing/
+│   ├── __init__.py      # Package initialization
+│   ├── config.py        # Configuration management
+│   ├── git_ops.py       # Git operations wrapper
+│   └── metadata.py      # Checkpoint metadata handling
+├── checkpoint-manager.py     # Main hook script
+├── restore-checkpoint.py    # Interactive restoration tool
+├── cleanup-checkpoints.py   # Maintenance utility
+├── checkpoint-aliases.sh    # Convenient shell aliases
+└── config.json             # Hook configuration
 ```
 
 ## Restoration Process
@@ -163,12 +170,13 @@ When restoring a checkpoint:
 
 ### Shadow Repositories
 - One shadow repo per project (identified by hash)
-- Located in `~/.claude/checkpoints/{project_hash}/`
+- Located in `~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoints/{project_hash}/`
 - Contains full git history of all checkpoints
 - Separate from your main project's git repo
+- Stored within the hook's directory for better isolation
 
 ### Metadata Storage
-- JSON file in `~/.claude/checkpoints/metadata/`
+- JSON file in `~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoints/metadata.json`
 - Tracks checkpoint details, session IDs, and tool operations
 - Enables searching and filtering checkpoints
 

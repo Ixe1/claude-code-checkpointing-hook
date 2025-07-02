@@ -9,5 +9,5 @@ from .git_ops import GitCheckpointManager
 from .metadata import CheckpointMetadata
 from .logger import logger
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 __all__ = ["CheckpointConfig", "GitCheckpointManager", "CheckpointMetadata", "logger"]

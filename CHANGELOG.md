@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-07-02
+
+### Added
+- Manual checkpoint creation support via `ckpt now` command
+- Full restoration mode that removes files not present in checkpoint
+- Support for custom messages in manual checkpoints
+- Isolated hook directory structure under `~/.claude/hooks/ixe1/claude-code-checkpointing-hook/`
+
+### Changed
+- Moved all hook files to author-namespaced directory for better organization
+- Separated configuration into dedicated `config.json` file within hook directory
+- Updated all paths to use the new directory structure
+- Improved restoration to handle file deletions properly
+- Enhanced checkpoint creation to support manual triggers
+
+### Fixed
+- Restoration now properly removes files that were deleted between checkpoints
+- Empty directories are cleaned up during restoration
+
 ## [1.0.1] - 2025-07-01
 
 ### Added

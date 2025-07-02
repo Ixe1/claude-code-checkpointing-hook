@@ -25,23 +25,24 @@ echo
 
 # Create directories
 echo "Creating directories..."
-mkdir -p ~/.claude/hooks
-mkdir -p ~/.claude/checkpoints
-mkdir -p ~/.claude/checkpoints/metadata
+mkdir -p ~/.claude/hooks/ixe1/claude-code-checkpointing-hook
+mkdir -p ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoints
 
 # Copy files
 echo "Installing checkpointing system..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TARGET_DIR="$HOME/.claude/hooks/ixe1/claude-code-checkpointing-hook"
 
-# Copy all Python files
-cp -r "$SCRIPT_DIR"/*.py ~/.claude/hooks/
-cp -r "$SCRIPT_DIR"/checkpointing ~/.claude/hooks/
-cp "$SCRIPT_DIR"/checkpoint-aliases.sh ~/.claude/hooks/
+# Copy all Python files and modules
+cp -r "$SCRIPT_DIR"/*.py "$TARGET_DIR"/
+cp -r "$SCRIPT_DIR"/checkpointing "$TARGET_DIR"/
+cp "$SCRIPT_DIR"/checkpoint-aliases.sh "$TARGET_DIR"/
+cp "$SCRIPT_DIR"/config.json "$TARGET_DIR"/
 
 # Make scripts executable
-chmod +x ~/.claude/hooks/*.py
+chmod +x "$TARGET_DIR"/*.py
 
-echo "✅ Files copied to ~/.claude/hooks/"
+echo "✅ Files copied to $TARGET_DIR"
 echo
 
 # Set up ckpt command
@@ -62,7 +63,7 @@ fi
 cat > "$BIN_DIR/ckpt" << 'EOF'
 #!/bin/bash
 # Claude Code checkpoint system - standalone executable
-source ~/.claude/hooks/checkpoint-aliases.sh
+source ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-aliases.sh
 ckpt "$@"
 EOF
 
@@ -96,7 +97,7 @@ fi
 # Test installation
 echo
 echo "Testing installation..."
-if python3 ~/.claude/hooks/checkpoint-manager.py --help &> /dev/null; then
+if python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-manager.py --help &> /dev/null; then
     echo "✅ Checkpoint manager is working"
 else
     echo "❌ Error: Checkpoint manager test failed"
@@ -125,21 +126,7 @@ try:
 except:
     settings = {}
 
-# Add checkpointing config
-if 'checkpointing' not in settings:
-    settings['checkpointing'] = {
-        "enabled": True,
-        "retention_days": 7,
-        "exclude_patterns": [
-            "*.log",
-            "node_modules/",
-            ".env",
-            "__pycache__/",
-            "*.tmp",
-            ".git/"
-        ],
-        "max_file_size_mb": 100
-    }
+# Note: Checkpointing config is now stored in the hook's own config.json file
 
 # Add hooks config
 if 'hooks' not in settings:
@@ -154,13 +141,13 @@ if 'PostToolUse' not in settings['hooks']:
 # Check if checkpoint hooks already exist
 pre_exists = any(
     hook.get('matcher') == 'Write|Edit|MultiEdit' and 
-    'checkpoint-manager.py' in hook.get('hooks', [{}])[0].get('command', '')
+    'ixe1/claude-code-checkpointing-hook/checkpoint-manager.py' in hook.get('hooks', [{}])[0].get('command', '')
     for hook in settings['hooks']['PreToolUse']
 )
 
 post_exists = any(
     hook.get('matcher') == 'Write|Edit|MultiEdit' and 
-    'checkpoint-manager.py --update-status' in hook.get('hooks', [{}])[0].get('command', '')
+    'ixe1/claude-code-checkpointing-hook/checkpoint-manager.py --update-status' in hook.get('hooks', [{}])[0].get('command', '')
     for hook in settings['hooks']['PostToolUse']
 )
 
@@ -174,7 +161,7 @@ if not pre_exists:
                 hook['hooks'] = []
             hook['hooks'].append({
                 "type": "command",
-                "command": "python3 ~/.claude/hooks/checkpoint-manager.py"
+                "command": "python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-manager.py"
             })
             found = True
             break
@@ -184,7 +171,7 @@ if not pre_exists:
             "matcher": "Write|Edit|MultiEdit",
             "hooks": [{
                 "type": "command",
-                "command": "python3 ~/.claude/hooks/checkpoint-manager.py"
+                "command": "python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-manager.py"
             }]
         })
 
@@ -198,7 +185,7 @@ if not post_exists:
                 hook['hooks'] = []
             hook['hooks'].append({
                 "type": "command",
-                "command": "python3 ~/.claude/hooks/checkpoint-manager.py --update-status"
+                "command": "python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-manager.py --update-status"
             })
             found = True
             break
@@ -208,7 +195,7 @@ if not post_exists:
             "matcher": "Write|Edit|MultiEdit",
             "hooks": [{
                 "type": "command",
-                "command": "python3 ~/.claude/hooks/checkpoint-manager.py --update-status"
+                "command": "python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-manager.py --update-status"
             }]
         })
 
@@ -229,7 +216,7 @@ else
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/checkpoint-manager.py"
+            "command": "python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-manager.py"
           }
         ]
       }
@@ -240,24 +227,11 @@ else
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/checkpoint-manager.py --update-status"
+            "command": "python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-manager.py --update-status"
           }
         ]
       }
     ]
-  },
-  "checkpointing": {
-    "enabled": true,
-    "retention_days": 7,
-    "exclude_patterns": [
-      "*.log",
-      "node_modules/",
-      ".env",
-      "__pycache__/",
-      "*.tmp",
-      ".git/"
-    ],
-    "max_file_size_mb": 100
   }
 }
 EOF

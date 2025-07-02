@@ -1,0 +1,15 @@
+{
+  "enabled": true,
+  "retention_days": 7,
+  "exclude_patterns": [
+    "*.log",
+    "node_modules/",
+    ".env",
+    "__pycache__/",
+    "*.tmp",
+    ".git/"
+  ],
+  "max_file_size_mb": 100,
+  "checkpoint_on_stop": false,
+  "auto_cleanup": true
+}

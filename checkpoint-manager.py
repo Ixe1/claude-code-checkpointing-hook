@@ -28,8 +28,8 @@ def handle_pre_tool_use(input_data: dict) -> int:
     tool_input = input_data.get('tool_input', {})
     session_id = input_data.get('session_id', '')
     
-    # Only checkpoint for file modification tools
-    if tool_name not in ['Write', 'Edit', 'MultiEdit']:
+    # Only checkpoint for file modification tools and manual checkpoints
+    if tool_name not in ['Write', 'Edit', 'MultiEdit', 'Manual']:
         return 0
     
     # Get project path (current working directory)
@@ -73,6 +73,9 @@ def handle_pre_tool_use(input_data: dict) -> int:
             message = f"Before {edit_count} edits to {filename}"
         else:
             message = "Before multi-edit operation"
+    elif tool_name == 'Manual':
+        # For manual checkpoints, use the message from tool_input if provided
+        message = tool_input.get('message', 'Manual checkpoint')
     else:
         message = f"Before {tool_name} operation"
     

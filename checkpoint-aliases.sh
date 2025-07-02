@@ -1,18 +1,18 @@
 #!/bin/bash
 # Claude Code checkpoint system - ckpt command
 # Add this to your ~/.bashrc or ~/.zshrc:
-# source ~/.claude/hooks/checkpoint-aliases.sh
+# source ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-aliases.sh
 
 # Main ckpt command with git-style subcommands
 ckpt() {
     case "$1" in
         restore|r)
             shift
-            python3 ~/.claude/hooks/restore-checkpoint.py "$@"
+            python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/restore-checkpoint.py "$@"
             ;;
         list|l)
             shift
-            python3 ~/.claude/hooks/restore-checkpoint.py --list "$@"
+            python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/restore-checkpoint.py --list "$@"
             ;;
         search|s)
             shift
@@ -25,11 +25,11 @@ ckpt() {
             ;;
         status|st)
             shift
-            python3 ~/.claude/hooks/checkpoint-manager.py --status "$@"
+            python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-manager.py --status "$@"
             ;;
         clean|c)
             shift
-            python3 ~/.claude/hooks/cleanup-checkpoints.py "$@"
+            python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/cleanup-checkpoints.py "$@"
             ;;
         diff|d)
             shift
@@ -37,7 +37,7 @@ ckpt() {
             python3 -c "
 import sys
 import os
-sys.path.insert(0, os.path.expanduser('~/.claude/hooks'))
+sys.path.insert(0, os.path.expanduser('~/.claude/hooks/ixe1/claude-code-checkpointing-hook'))
 from pathlib import Path
 from checkpointing import GitCheckpointManager
 
@@ -54,8 +54,8 @@ else:
         now|n)
             shift
             local message="${1:-Manual checkpoint}"
-            echo '{"tool_name":"Manual","tool_input":{"action":"checkpoint"},"session_id":"manual"}' | \
-            python3 ~/.claude/hooks/checkpoint-manager.py
+            echo "{\"tool_name\":\"Manual\",\"tool_input\":{\"message\":\"$message\"},\"session_id\":\"manual\"}" | \
+            python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-manager.py
             ;;
         help|h|"")
             echo "Usage: ckpt <command> [args]"

@@ -14,10 +14,13 @@ fi
 
 echo "Removing checkpointing system..."
 
-# Remove hook files
-rm -rf ~/.claude/hooks/checkpoint*.py
-rm -rf ~/.claude/hooks/checkpointing/
-rm -f ~/.claude/hooks/checkpoint-aliases.sh
+# Remove hook directory
+rm -rf ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/
+
+# Remove empty author directory if no other hooks exist
+if [ -d ~/.claude/hooks/ixe1 ] && [ -z "$(ls -A ~/.claude/hooks/ixe1)" ]; then
+    rmdir ~/.claude/hooks/ixe1
+fi
 
 # Remove ckpt command
 for dir in "$HOME/.local/bin" "$HOME/bin"; do
@@ -50,7 +53,7 @@ try:
                     # Remove checkpoint-manager.py entries
                     hook['hooks'] = [
                         h for h in hook['hooks'] 
-                        if 'checkpoint-manager.py' not in h.get('command', '')
+                        if 'ixe1/claude-code-checkpointing-hook/checkpoint-manager.py' not in h.get('command', '')
                     ]
             
             # Remove empty hook entries
@@ -66,7 +69,7 @@ try:
                     # Remove checkpoint-manager.py entries
                     hook['hooks'] = [
                         h for h in hook['hooks'] 
-                        if 'checkpoint-manager.py' not in h.get('command', '')
+                        if 'ixe1/claude-code-checkpointing-hook/checkpoint-manager.py' not in h.get('command', '')
                     ]
             
             # Remove empty hook entries
@@ -75,9 +78,7 @@ try:
                 if h.get('hooks')
             ]
     
-    # Remove checkpointing config
-    if 'checkpointing' in settings:
-        del settings['checkpointing']
+    # Note: Checkpointing config is now stored separately in the hook's config.json
     
     # Write updated settings
     with open(settings_path, 'w') as f:
@@ -91,7 +92,7 @@ EOF
 fi
 
 echo
-echo "Your checkpoints are preserved in: ~/.claude/checkpoints/"
-echo "To remove them, run: rm -rf ~/.claude/checkpoints"
+echo "Your checkpoints are preserved in: ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoints/"
+echo "To remove them, run: rm -rf ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoints"
 echo
 echo "✅ Uninstall complete!"

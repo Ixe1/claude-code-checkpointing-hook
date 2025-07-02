@@ -139,17 +139,21 @@ if 'PostToolUse' not in settings['hooks']:
     settings['hooks']['PostToolUse'] = []
 
 # Check if checkpoint hooks already exist
-pre_exists = any(
-    hook.get('matcher') == 'Write|Edit|MultiEdit' and 
-    'ixe1/claude-code-checkpointing-hook/checkpoint-manager.py' in hook.get('hooks', [{}])[0].get('command', '')
-    for hook in settings['hooks']['PreToolUse']
-)
+pre_exists = False
+for hook in settings['hooks']['PreToolUse']:
+    if hook.get('matcher') == 'Write|Edit|MultiEdit':
+        for h in hook.get('hooks', []):
+            if 'ixe1/claude-code-checkpointing-hook/checkpoint-manager.py' in h.get('command', ''):
+                pre_exists = True
+                break
 
-post_exists = any(
-    hook.get('matcher') == 'Write|Edit|MultiEdit' and 
-    'ixe1/claude-code-checkpointing-hook/checkpoint-manager.py --update-status' in hook.get('hooks', [{}])[0].get('command', '')
-    for hook in settings['hooks']['PostToolUse']
-)
+post_exists = False
+for hook in settings['hooks']['PostToolUse']:
+    if hook.get('matcher') == 'Write|Edit|MultiEdit':
+        for h in hook.get('hooks', []):
+            if 'ixe1/claude-code-checkpointing-hook/checkpoint-manager.py --update-status' in h.get('command', ''):
+                post_exists = True
+                break
 
 # Add PreToolUse hook if not exists
 if not pre_exists:
@@ -159,10 +163,17 @@ if not pre_exists:
         if hook.get('matcher') == 'Write|Edit|MultiEdit':
             if 'hooks' not in hook:
                 hook['hooks'] = []
-            hook['hooks'].append({
-                "type": "command",
-                "command": "python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-manager.py"
-            })
+            # Check if the specific hook doesn't already exist before appending
+            hook_command = "python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-manager.py"
+            already_has_hook = any(
+                h.get('command') == hook_command 
+                for h in hook['hooks']
+            )
+            if not already_has_hook:
+                hook['hooks'].append({
+                    "type": "command",
+                    "command": hook_command
+                })
             found = True
             break
     
@@ -183,10 +194,17 @@ if not post_exists:
         if hook.get('matcher') == 'Write|Edit|MultiEdit':
             if 'hooks' not in hook:
                 hook['hooks'] = []
-            hook['hooks'].append({
-                "type": "command",
-                "command": "python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-manager.py --update-status"
-            })
+            # Check if the specific hook doesn't already exist before appending
+            hook_command = "python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-manager.py --update-status"
+            already_has_hook = any(
+                h.get('command') == hook_command 
+                for h in hook['hooks']
+            )
+            if not already_has_hook:
+                hook['hooks'].append({
+                    "type": "command",
+                    "command": hook_command
+                })
             found = True
             break
     

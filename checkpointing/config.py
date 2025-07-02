@@ -118,8 +118,19 @@ class CheckpointConfig:
         
         file_str = str(file_path)
         for pattern in self.exclude_patterns:
-            if fnmatch.fnmatch(file_str, pattern):
-                return True
+            # Handle directory patterns (ending with /)
+            if pattern.endswith('/'):
+                # Check if the file is within this directory
+                if file_str.startswith(pattern) or ('/' + pattern) in file_str:
+                    return True
+                # Also check without the trailing slash
+                pattern_no_slash = pattern.rstrip('/')
+                if fnmatch.fnmatch(file_str, pattern_no_slash) or fnmatch.fnmatch(file_str, pattern_no_slash + '/*'):
+                    return True
+            else:
+                # Regular pattern matching
+                if fnmatch.fnmatch(file_str, pattern):
+                    return True
         
         # Check file size
         if file_path.exists() and file_path.is_file():

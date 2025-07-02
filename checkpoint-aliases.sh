@@ -21,7 +21,7 @@ ckpt() {
                 echo "Usage: ckpt search <term>"
                 return 1
             fi
-            python3 ~/.claude/hooks/restore-checkpoint.py --search "$@"
+            python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/restore-checkpoint.py --search "$@"
             ;;
         status|st)
             shift

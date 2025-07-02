@@ -40,11 +40,9 @@ class TestCheckpointConfig(unittest.TestCase):
     def test_load_custom_config(self):
         """Test loading custom configuration."""
         custom_settings = {
-            "checkpointing": {
-                "enabled": False,
-                "retention_days": 14,
-                "max_file_size_mb": 50
-            }
+            "enabled": False,
+            "retention_days": 14,
+            "max_file_size_mb": 50
         }
         
         with open(self.settings_path, 'w') as f:
@@ -59,10 +57,8 @@ class TestCheckpointConfig(unittest.TestCase):
     def test_config_validation(self):
         """Test configuration validation."""
         invalid_settings = {
-            "checkpointing": {
-                "retention_days": -5,  # Should be clamped to 1
-                "max_file_size_mb": 2000  # Should be clamped to 1000
-            }
+            "retention_days": -5,  # Should be clamped to 1
+            "max_file_size_mb": 2000  # Should be clamped to 1000
         }
         
         with open(self.settings_path, 'w') as f:

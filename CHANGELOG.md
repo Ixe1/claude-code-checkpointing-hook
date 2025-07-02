@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2025-07-02
+
+### Fixed
+- Fixed failing tests to work with standalone config.json structure
+- Fixed directory pattern matching for file exclusions (e.g., `node_modules/` now properly excludes all files within)
+- Fixed search command path in checkpoint-aliases.sh to use correct installation directory
+- Fixed install.sh to prevent duplicate hook entries when run multiple times
+- Added proper type guards in tests for static analyzer compatibility
+
+### Added
+- Comprehensive test coverage for metadata operations (test_metadata.py)
+- Comprehensive test coverage for checkpoint manager hooks (test_checkpoint_manager.py)
+- Tests increased from 10 to 29 total tests
+
+### Changed
+- Improved duplicate detection logic in install.sh to check within existing hook arrays
+
 ## [1.1.1] - 2025-07-02
 
 ### Fixed

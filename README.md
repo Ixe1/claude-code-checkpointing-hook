@@ -240,7 +240,7 @@ rm -rf ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/
 ### Manual Checkpoint Creation
 ```python
 echo '{"tool_name":"Manual","tool_input":{},"session_id":"manual"}' | \
-python3 ~/.claude/hooks/checkpoint-manager.py
+python3 ~/.claude/hooks/ixe1/claude-code-checkpointing-hook/checkpoint-manager.py
 ```
 
 ### Direct Shadow Repo Access

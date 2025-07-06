@@ -363,53 +363,94 @@ class GitCheckpointManager:
         
         worktree_path = self.checkpoint_repo / 'worktree'
         
-        # Get commit log from all branches
-        result = self._run_git(
-            ['log', '--all', '--pretty=format:%H|%ai|%s', '--notes'],
-            cwd=worktree_path
-        )
+        # Import metadata manager
+        from .metadata import CheckpointMetadata
+        metadata_mgr = CheckpointMetadata()
         
-        if result.returncode != 0:
-            return []
+        # Get checkpoints from metadata
+        project_checkpoints = metadata_mgr.list_project_checkpoints(self.project_hash)
         
+        # If no metadata, fall back to git log
+        if not project_checkpoints:
+            # Get commit log from all branches
+            result = self._run_git(
+                ['log', '--all', '--pretty=format:%H|%ai|%s', '--notes'],
+                cwd=worktree_path
+            )
+            
+            if result.returncode != 0:
+                return []
+            
+            checkpoints = []
+            for line in result.stdout.strip().split('\n'):
+                if line and 'CHECKPOINT:' in line:
+                    parts = line.split('|', 2)
+                    if len(parts) >= 3:
+                        commit_hash, timestamp, message = parts
+                        
+                        # Get metadata from notes
+                        notes_result = self._run_git(
+                            ['notes', 'show', commit_hash],
+                            cwd=worktree_path
+                        )
+                        
+                        metadata = {}
+                        if notes_result.returncode == 0:
+                            try:
+                                metadata = json.loads(notes_result.stdout)
+                            except json.JSONDecodeError:
+                                pass
+                        
+                        # Extract the descriptive message
+                        checkpoint_msg = message.replace('CHECKPOINT: ', '')
+                        # Clean up message format
+                        if '[' in checkpoint_msg and ']' in checkpoint_msg:
+                            desc_part = checkpoint_msg.split('[')[0].strip()
+                        else:
+                            desc_part = checkpoint_msg
+                        
+                        checkpoints.append({
+                            'hash': commit_hash,
+                            'timestamp': timestamp,
+                            'message': desc_part,
+                            'metadata': metadata
+                        })
+            
+            return checkpoints
+        
+        # Convert metadata format to expected format
         checkpoints = []
-        for line in result.stdout.strip().split('\n'):
-            if line and 'CHECKPOINT:' in line:
-                parts = line.split('|', 2)
-                if len(parts) >= 3:
-                    commit_hash, timestamp, message = parts
-                    
-                    # Get metadata from notes
-                    notes_result = self._run_git(
-                        ['notes', 'show', commit_hash],
-                        cwd=worktree_path
-                    )
-                    
-                    metadata = {}
-                    if notes_result.returncode == 0:
-                        try:
-                            metadata = json.loads(notes_result.stdout)
-                        except json.JSONDecodeError:
-                            pass
-                    
-                    # Extract the descriptive message and timestamp
-                    checkpoint_msg = message.replace('CHECKPOINT: ', '')
-                    # For new format: "Before Write operation on file.txt [2025-07-01T...]"
-                    # For old format: just the timestamp
-                    if '[' in checkpoint_msg and ']' in checkpoint_msg:
-                        desc_part = checkpoint_msg.split('[')[0].strip()
-                        time_part = checkpoint_msg.split('[')[1].rstrip(']')
-                    else:
-                        # Old format - just timestamp
-                        desc_part = checkpoint_msg
-                        time_part = checkpoint_msg
-                    
-                    checkpoints.append({
-                        'hash': commit_hash,
-                        'timestamp': timestamp,
-                        'message': desc_part,
-                        'metadata': metadata
-                    })
+        for cp in project_checkpoints:
+            # Get git commit info to verify it exists
+            result = self._run_git(
+                ['rev-parse', cp['hash']],
+                cwd=worktree_path
+            )
+            
+            if result.returncode == 0:
+                # Get commit message
+                msg_result = self._run_git(
+                    ['log', '-1', '--pretty=format:%s', cp['hash']],
+                    cwd=worktree_path
+                )
+                
+                message = msg_result.stdout.strip() if msg_result.returncode == 0 else "Unknown"
+                # Clean up message
+                if 'CHECKPOINT:' in message:
+                    message = message.replace('CHECKPOINT: ', '')
+                    if '[' in message and ']' in message:
+                        message = message.split('[')[0].strip()
+                
+                checkpoints.append({
+                    'hash': cp['hash'],
+                    'timestamp': cp.get('timestamp', ''),
+                    'message': message,
+                    'metadata': {
+                        'tool_name': cp.get('tool_name', ''),
+                        'session_id': cp.get('session_id', ''),
+                        'files': cp.get('files_affected', [])
+                    }
+                })
         
         return checkpoints
     

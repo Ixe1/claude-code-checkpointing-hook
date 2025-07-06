@@ -3,7 +3,10 @@
 
 import json
 import os
-from pathlib import Path
+import re
+import fnmatch
+import glob
+from pathlib import Path, PurePath
 from typing import Dict, List, Optional
 
 
@@ -60,9 +63,15 @@ class CheckpointConfig:
             validated['retention_days'] = defaults['retention_days']
         
         # Validate exclude_patterns (list of strings)
-        patterns = config.get('exclude_patterns', defaults['exclude_patterns'])
-        if isinstance(patterns, list):
-            validated['exclude_patterns'] = [str(p) for p in patterns if p]
+        if 'exclude_patterns' in config:
+            patterns = config['exclude_patterns']
+            if patterns is None:
+                # Explicitly handle None as empty list
+                validated['exclude_patterns'] = []
+            elif isinstance(patterns, list):
+                validated['exclude_patterns'] = [str(p) for p in patterns if p]
+            else:
+                validated['exclude_patterns'] = defaults['exclude_patterns']
         else:
             validated['exclude_patterns'] = defaults['exclude_patterns']
         
@@ -114,23 +123,35 @@ class CheckpointConfig:
     
     def should_exclude_file(self, file_path: Path) -> bool:
         """Check if a file should be excluded from checkpointing."""
-        import fnmatch
         
-        file_str = str(file_path)
+        # Normalize the file path
+        file_path = Path(file_path)
+        
+        # Convert to string for pattern matching
+        # Use forward slashes for consistency
+        file_str = str(file_path).replace('\\', '/')
+        
         for pattern in self.exclude_patterns:
-            # Handle directory patterns (ending with /)
-            if pattern.endswith('/'):
-                # Check if the file is within this directory
-                if file_str.startswith(pattern) or ('/' + pattern) in file_str:
-                    return True
-                # Also check without the trailing slash
-                pattern_no_slash = pattern.rstrip('/')
-                if fnmatch.fnmatch(file_str, pattern_no_slash) or fnmatch.fnmatch(file_str, pattern_no_slash + '/*'):
-                    return True
-            else:
-                # Regular pattern matching
-                if fnmatch.fnmatch(file_str, pattern):
-                    return True
+            # Skip empty patterns
+            if not pattern:
+                continue
+                
+            # Handle patterns with braces like *.{tmp,bak,swp}
+            if '{' in pattern and '}' in pattern:
+                # Expand brace patterns
+                match = re.search(r'\{([^}]+)\}', pattern)
+                if match:
+                    options = match.group(1).split(',')
+                    base_pattern = pattern[:match.start()] + '{}' + pattern[match.end():]
+                    for option in options:
+                        expanded = base_pattern.format(option.strip())
+                        if self._match_pattern(file_path, file_str, expanded):
+                            return True
+                    continue
+            
+            # Check pattern matching
+            if self._match_pattern(file_path, file_str, pattern):
+                return True
         
         # Check file size
         if file_path.exists() and file_path.is_file():
@@ -139,3 +160,141 @@ class CheckpointConfig:
                 return True
         
         return False
+    
+    def _match_pattern(self, file_path: Path, file_str: str, pattern: str) -> bool:
+        """Match a single pattern against a file path."""
+        
+        # Normalize pattern
+        pattern = pattern.replace('\\', '/')
+        
+        # Handle directory patterns (ending with /)
+        if pattern.endswith('/'):
+            dir_pattern = pattern.rstrip('/')
+            # Check if file is in this directory
+            if file_str == dir_pattern or file_str.startswith(dir_pattern + '/'):
+                return True
+            # Also check each parent directory
+            for parent in file_path.parents:
+                parent_str = str(parent).replace('\\', '/')
+                if parent_str == dir_pattern or parent_str.endswith('/' + dir_pattern):
+                    return True
+                if fnmatch.fnmatch(parent.name, dir_pattern):
+                    return True
+        
+        # Handle ** patterns using pathlib's match which supports them properly
+        elif '**' in pattern:
+            # Special handling for patterns ending with /**/* or /**
+            if pattern.endswith('/**/*'):
+                # Pattern like build/**/* - match anything under build/
+                prefix = pattern[:-5]  # Remove /**/*
+                if file_str.startswith(prefix + '/'):
+                    return True
+            elif pattern.endswith('/**'):
+                # Pattern like something/** - match directory and everything under it
+                prefix = pattern[:-3]
+                if file_str == prefix or file_str.startswith(prefix + '/'):
+                    return True
+            
+            # For patterns ending with / that contain **, treat as directory pattern
+            elif pattern.endswith('/') and '**' in pattern:
+                # Pattern like **/__pycache__/ - match files in any __pycache__ directory
+                if pattern == '**/__pycache__/':
+                    # Special case for common pattern
+                    return '__pycache__' in file_path.parts
+                elif pattern.startswith('**/') and pattern.endswith('/'):
+                    # Extract directory name between **/ and /
+                    dir_name = pattern[3:-1]
+                    # Check if file is inside this directory at any level
+                    for parent in file_path.parents:
+                        if parent.name == dir_name:
+                            return True
+                else:
+                    # Other patterns with ** and trailing /
+                    # Just check if any parent directory would match the pattern without /
+                    pattern_without_slash = pattern.rstrip('/')
+                    path_parts = file_path.parts
+                    for i in range(len(path_parts)):
+                        partial_path = '/'.join(path_parts[:i+1])
+                        if fnmatch.fnmatch(partial_path, pattern_without_slash):
+                            return True
+            
+            # Try direct pathlib match
+            try:
+                # pathlib.match() supports ** patterns
+                if file_path.match(pattern):
+                    return True
+            except ValueError:
+                pass
+            
+            # For patterns like **/something, check from any parent
+            if pattern.startswith('**/'):
+                suffix = pattern[3:]
+                # Check against filename
+                if fnmatch.fnmatch(file_path.name, suffix):
+                    return True
+                # Check all path suffixes
+                path_parts = file_path.parts
+                for i in range(len(path_parts)):
+                    suffix_path = '/'.join(path_parts[i:])
+                    if fnmatch.fnmatch(suffix_path, suffix):
+                        return True
+            
+            # For patterns with ** in the middle
+            else:
+                # Use regex conversion as fallback
+                regex_pattern = self._glob_to_regex(pattern)
+                if re.match(regex_pattern, file_str):
+                    return True
+        
+        # Simple patterns without **
+        else:
+            # Try matching the full path
+            if fnmatch.fnmatch(file_str, pattern):
+                return True
+            # Try matching just the filename
+            if fnmatch.fnmatch(file_path.name, pattern):
+                return True
+            # For patterns like "build/*", check if any parent dir matches "build"
+            if '/' in pattern:
+                # Check if the pattern matches from any starting point in the path
+                path_parts = file_str.split('/')
+                for i in range(len(path_parts)):
+                    path_suffix = '/'.join(path_parts[i:])
+                    if fnmatch.fnmatch(path_suffix, pattern):
+                        return True
+        
+        return False
+    
+    def _glob_to_regex(self, pattern: str) -> str:
+        """Convert a glob pattern with ** to a regex pattern."""
+        
+        # Start with the original pattern
+        regex = pattern
+        
+        # Escape special regex characters except *, ?, and /
+        regex = re.sub(r'([.+^${}()|[\]\\])', r'\\\1', regex)
+        
+        # Convert glob patterns to regex
+        # Replace ** with .* (matches any number of directories)
+        regex = regex.replace('**/', '(.*/)?')
+        regex = regex.replace('/**', '(/.*)?')
+        regex = regex.replace('**', '.*')
+        
+        # Replace * with [^/]* (matches within a directory)
+        regex = regex.replace('*', '[^/]*')
+        
+        # Replace ? with [^/] (matches single character)
+        regex = regex.replace('?', '[^/]')
+        
+        # Ensure the pattern matches the entire path
+        if not regex.startswith('^'):
+            # If pattern doesn't start with /, allow matching from any directory
+            if not regex.startswith('/'):
+                regex = '(^|.*/)'  + regex
+            else:
+                regex = '^' + regex
+        
+        if not regex.endswith('$'):
+            regex = regex + '$'
+        
+        return regex

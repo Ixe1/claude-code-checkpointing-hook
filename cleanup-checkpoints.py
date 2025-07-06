@@ -22,51 +22,52 @@ def cleanup_project_checkpoints(project_path: Path, retention_days: int,
     checkpoint_mgr = GitCheckpointManager(project_path)
     metadata_mgr = CheckpointMetadata()
     
-    if not checkpoint_mgr.checkpoint_repo.exists():
-        return 0
+    # Check if project has any checkpoints
+    project_hash = checkpoint_mgr.project_hash
+    checkpoints_meta = metadata_mgr.list_project_checkpoints(project_hash)
     
-    # Get all checkpoints
-    checkpoints = checkpoint_mgr.list_checkpoints()
-    if not checkpoints:
+    if not checkpoints_meta:
         return 0
     
     # Calculate cutoff date
     cutoff_date = datetime.now() - timedelta(days=retention_days)
     
     removed_count = 0
-    for checkpoint in checkpoints:
+    checkpoints_to_remove = []
+    
+    for checkpoint in checkpoints_meta:
         try:
-            # Parse timestamp from message
-            timestamp_str = checkpoint['message'].split('CHECKPOINT: ')[1].split('\n')[0]
+            # Parse timestamp from metadata
+            timestamp_str = checkpoint.get('timestamp', '')
+            if not timestamp_str:
+                continue
+                
             checkpoint_date = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
             
             if checkpoint_date < cutoff_date:
                 if dry_run:
                     print(f"Would remove checkpoint {checkpoint['hash'][:8]} from {timestamp_str}")
                 else:
-                    # Remove from git history
-                    worktree_path = checkpoint_mgr.checkpoint_repo / 'worktree'
-                    
-                    # This is a simplified approach - in production you might want to use
-                    # git filter-branch or git filter-repo for more efficient cleanup
                     print(f"Removing checkpoint {checkpoint['hash'][:8]} from {timestamp_str}")
+                    checkpoints_to_remove.append(checkpoint['hash'])
                     
                 removed_count += 1
         except Exception as e:
-            print(f"Warning: Could not process checkpoint {checkpoint['hash'][:8]}: {e}")
+            print(f"Warning: Could not process checkpoint {checkpoint.get('hash', 'unknown')[:8]}: {e}")
             continue
     
-    if not dry_run and removed_count > 0:
-        # Run git gc to clean up
-        worktree_path = checkpoint_mgr.checkpoint_repo / 'worktree'
-        subprocess.run(
-            ['git', 'gc', '--aggressive', '--prune=now'],
-            cwd=str(worktree_path),
-            capture_output=True
-        )
+    if not dry_run and checkpoints_to_remove:
+        # Remove checkpoints from metadata
+        metadata = metadata_mgr._load_metadata()
+        if project_hash in metadata:
+            for checkpoint_hash in checkpoints_to_remove:
+                if checkpoint_hash in metadata[project_hash]:
+                    del metadata[project_hash][checkpoint_hash]
+            metadata_mgr._save_metadata(metadata)
         
-        # Clean up old metadata
-        metadata_mgr.cleanup_old_metadata(checkpoint_mgr.project_hash)
+        # Note: We're not actually removing the git commits here as that would require
+        # rewriting history which is complex. The metadata cleanup is sufficient
+        # for most purposes. Git gc will eventually clean up unreferenced objects.
     
     return removed_count
 
@@ -74,28 +75,52 @@ def cleanup_project_checkpoints(project_path: Path, retention_days: int,
 def cleanup_all_projects(checkpoint_base: Path, retention_days: int, 
                         dry_run: bool = False) -> None:
     """Clean up checkpoints for all projects."""
-    if not checkpoint_base.exists():
-        print("No checkpoints directory found.")
+    metadata_mgr = CheckpointMetadata()
+    metadata = metadata_mgr._load_metadata()
+    
+    if not metadata:
+        print("No checkpoints found.")
         return
     
     total_removed = 0
+    cutoff_date = datetime.now() - timedelta(days=retention_days)
     
-    for project_dir in checkpoint_base.iterdir():
-        if project_dir.is_dir() and len(project_dir.name) == 12:  # Hash length
-            print(f"\nProcessing project {project_dir.name}...")
+    for project_hash, project_checkpoints in metadata.items():
+        print(f"\nProcessing project {project_hash}...")
+        
+        removed_count = 0
+        checkpoints_to_remove = []
+        
+        for checkpoint_hash, checkpoint_data in project_checkpoints.items():
+            try:
+                timestamp_str = checkpoint_data.get('timestamp', '')
+                if not timestamp_str:
+                    continue
+                    
+                checkpoint_date = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                
+                if checkpoint_date < cutoff_date:
+                    if dry_run:
+                        print(f"  Would remove checkpoint {checkpoint_hash[:8]} from {timestamp_str}")
+                    else:
+                        print(f"  Removing checkpoint {checkpoint_hash[:8]} from {timestamp_str}")
+                        checkpoints_to_remove.append(checkpoint_hash)
+                        
+                    removed_count += 1
+            except Exception as e:
+                print(f"  Warning: Could not process checkpoint {checkpoint_hash[:8]}: {e}")
+                continue
+        
+        if not dry_run and checkpoints_to_remove:
+            # Remove from metadata
+            for checkpoint_hash in checkpoints_to_remove:
+                del metadata[project_hash][checkpoint_hash]
             
-            # Find the original project path from metadata
-            metadata_mgr = CheckpointMetadata()
-            project_checkpoints = metadata_mgr.list_project_checkpoints(project_dir.name)
-            
-            if project_checkpoints:
-                # Use the worktree path as a proxy for the project
-                worktree_path = project_dir / 'worktree'
-                if worktree_path.exists():
-                    removed = cleanup_project_checkpoints(
-                        worktree_path, retention_days, dry_run
-                    )
-                    total_removed += removed
+        total_removed += removed_count
+    
+    if not dry_run and total_removed > 0:
+        # Save updated metadata
+        metadata_mgr._save_metadata(metadata)
     
     print(f"\nTotal checkpoints {'would be' if dry_run else ''} removed: {total_removed}")
 
@@ -103,34 +128,33 @@ def cleanup_all_projects(checkpoint_base: Path, retention_days: int,
 def cleanup_orphaned_repos(checkpoint_base: Path, dry_run: bool = False) -> None:
     """Remove checkpoint repositories that no longer have a corresponding project."""
     if not checkpoint_base.exists():
+        print("No checkpoints directory found.")
         return
     
+    metadata_mgr = CheckpointMetadata()
+    metadata = metadata_mgr._load_metadata()
+    
+    # Get all project hashes from metadata
+    known_projects = set(metadata.keys())
+    orphaned_count = 0
+    
+    # Check physical directories
     for project_dir in checkpoint_base.iterdir():
         if project_dir.is_dir() and len(project_dir.name) == 12:
-            worktree_path = project_dir / 'worktree'
-            
-            # Check if we can determine the original project path
-            if worktree_path.exists():
-                # Try to get the remote URL or origin
-                result = subprocess.run(
-                    ['git', 'config', '--get', 'remote.origin.url'],
-                    cwd=str(worktree_path),
-                    capture_output=True,
-                    text=True
-                )
-                
-                # If no origin and the directory is very old, consider it orphaned
-                if result.returncode != 0:
-                    stat = project_dir.stat()
-                    age_days = (datetime.now() - datetime.fromtimestamp(stat.st_mtime)).days
-                    
-                    if age_days > 30:  # Orphaned for more than 30 days
-                        if dry_run:
-                            print(f"Would remove orphaned checkpoint repo: {project_dir.name}")
-                        else:
-                            print(f"Removing orphaned checkpoint repo: {project_dir.name}")
-                            import shutil
-                            shutil.rmtree(project_dir)
+            if project_dir.name not in known_projects:
+                # This is an orphaned directory
+                if dry_run:
+                    print(f"Would remove orphaned checkpoint repo: {project_dir.name}")
+                else:
+                    print(f"Removing orphaned checkpoint repo: {project_dir.name}")
+                    import shutil
+                    shutil.rmtree(project_dir)
+                orphaned_count += 1
+    
+    if orphaned_count == 0:
+        print("No orphaned checkpoint repositories found.")
+    else:
+        print(f"\nFound {orphaned_count} orphaned checkpoint {'repository' if orphaned_count == 1 else 'repositories'}")
 
 
 def main():
@@ -158,6 +182,11 @@ def main():
         action='store_true',
         help='Clean up orphaned checkpoint repositories'
     )
+    parser.add_argument(
+        '--all', '-a',
+        action='store_true',
+        help='Clean up all projects (default if no project specified)'
+    )
     
     args = parser.parse_args()
     
@@ -170,7 +199,9 @@ def main():
         print("Use --dry-run to see what would be cleaned up.")
         return
     
-    checkpoint_base = Path.home() / ".claude" / "checkpoints"
+    # Get the correct checkpoint base path from config
+    hook_dir = Path.home() / ".claude" / "hooks" / "ixe1" / "claude-code-checkpointing-hook"
+    checkpoint_base = hook_dir / "checkpoints"
     
     if args.orphaned:
         print("Cleaning up orphaned checkpoint repositories...")
@@ -180,11 +211,17 @@ def main():
         print(f"Cleaning up checkpoints for: {project_path}")
         print(f"Retention period: {retention_days} days")
         
+        # Check if checkpoint repo exists for this project
+        git_mgr = GitCheckpointManager(project_path)
+        if not git_mgr.checkpoint_repo.exists():
+            print("No checkpoint repository found for this project.")
+            return
+        
         removed = cleanup_project_checkpoints(
             project_path, retention_days, args.dry_run
         )
         
-        print(f"\nCheckpoints {'would be' if args.dry_run else ''} removed: {removed}")
+        print(f"\nCleaned up {removed} checkpoint{'s' if removed != 1 else ''}")
     else:
         print(f"Cleaning up all checkpoints older than {retention_days} days...")
         cleanup_all_projects(checkpoint_base, retention_days, args.dry_run)

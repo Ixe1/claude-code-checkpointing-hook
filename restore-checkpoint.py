@@ -64,8 +64,14 @@ def list_checkpoints(project_path: Path, limit: int = 20) -> None:
             'unknown': '?'
         }.get(status, '?')
         
-        timestamp = checkpoint.get('timestamp', '')
-        relative_time = format_timestamp(timestamp)
+        # Try to get timestamp from metadata first, then from checkpoint
+        timestamp = ''
+        if checkpoint_meta and 'timestamp' in checkpoint_meta:
+            timestamp = checkpoint_meta['timestamp']
+        elif 'timestamp' in checkpoint:
+            timestamp = checkpoint['timestamp']
+        
+        relative_time = format_timestamp(timestamp) if timestamp else 'unknown time'
         
         files = checkpoint_meta.get('files_affected', []) if checkpoint_meta else []
         files_str = ', '.join(files) if files else 'unknown files'
@@ -129,7 +135,7 @@ def interactive_restore(project_path: Path) -> None:
     
     # Show what will be restored
     print(f"\nSelected checkpoint: {selected_checkpoint['hash'][:8]}")
-    print(f"Message: {selected_checkpoint['message']}")
+    print(f"Message: {selected_checkpoint.get('message', 'No message')}")
     
     # Show diff
     print("\nFetching changes...")
@@ -221,8 +227,9 @@ def search_checkpoints(project_path: Path, search_term: str) -> None:
     print("=" * 80)
     
     for checkpoint in matching[:10]:
-        print(f"{checkpoint['hash'][:8]} - {checkpoint['message']}")
-        print(f"  Timestamp: {checkpoint['timestamp']}")
+        print(f"{checkpoint['hash'][:8]} - {checkpoint.get('message', 'No message')}")
+        if 'timestamp' in checkpoint and checkpoint['timestamp']:
+            print(f"  Timestamp: {checkpoint['timestamp']}")
 
 
 def main():

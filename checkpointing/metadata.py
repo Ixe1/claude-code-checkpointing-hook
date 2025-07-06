@@ -2,6 +2,11 @@
 """Metadata management for checkpoints."""
 
 import json
+import os
+import tempfile
+import time
+import fcntl
+import platform
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -15,6 +20,8 @@ class CheckpointMetadata:
         hook_dir = Path.home() / ".claude" / "hooks" / "ixe1" / "claude-code-checkpointing-hook"
         self.checkpoint_base = checkpoint_base or hook_dir / "checkpoints"
         self.metadata_file = self.checkpoint_base / "metadata.json"
+        self.lock_file = self.checkpoint_base / ".metadata.lock"
+        self._use_file_locking = platform.system() != "Windows"
     
     def _load_metadata(self) -> Dict:
         """Load metadata from file."""
@@ -28,47 +35,130 @@ class CheckpointMetadata:
             return {}
     
     def _save_metadata(self, metadata: Dict):
-        """Save metadata to file."""
+        """Save metadata to file with atomic write to prevent corruption."""
         self.checkpoint_base.mkdir(parents=True, exist_ok=True)
         
-        with open(self.metadata_file, 'w') as f:
-            json.dump(metadata, f, indent=2, default=str)
+        # Use atomic write to prevent corruption during concurrent access
+        # Write to a temporary file first, then rename it
+        temp_fd, temp_path = tempfile.mkstemp(dir=str(self.checkpoint_base), prefix='.metadata', suffix='.tmp')
+        try:
+            with os.fdopen(temp_fd, 'w') as f:
+                json.dump(metadata, f, indent=2, default=str)
+            
+            # Atomic rename (on POSIX systems)
+            os.replace(temp_path, str(self.metadata_file))
+        except Exception:
+            # Clean up temp file on error
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+            raise
     
     def add_checkpoint(self, project_hash: str, checkpoint_hash: str, 
                       tool_name: str, tool_input: Dict, session_id: str) -> Dict:
-        """Add metadata for a new checkpoint."""
-        metadata = self._load_metadata()
+        """Add metadata for a new checkpoint with file locking for concurrent access."""
+        self.checkpoint_base.mkdir(parents=True, exist_ok=True)
         
-        if project_hash not in metadata:
-            metadata[project_hash] = {}
+        # Use a simple lock file approach
+        max_wait_time = 5.0  # Maximum time to wait for lock
+        wait_interval = 0.05  # 50ms between checks
+        start_time = time.time()
         
-        checkpoint_data = {
-            'timestamp': datetime.now().isoformat(),
-            'tool_name': tool_name,
-            'tool_input': tool_input,
-            'session_id': session_id,
-            'status': 'pending',
-            'files_affected': self._extract_files(tool_name, tool_input)
-        }
+        while True:
+            try:
+                # Try to create lock file exclusively
+                lock_fd = os.open(str(self.lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                break
+            except FileExistsError:
+                # Lock file exists, another process has the lock
+                if time.time() - start_time > max_wait_time:
+                    # Clean up stale lock if it's too old
+                    try:
+                        if self.lock_file.exists():
+                            lock_stat = self.lock_file.stat()
+                            if time.time() - lock_stat.st_mtime > 10:  # 10 seconds old
+                                self.lock_file.unlink()
+                                continue
+                    except:
+                        pass
+                    raise RuntimeError("Timeout waiting for metadata lock")
+                time.sleep(wait_interval)
         
-        metadata[project_hash][checkpoint_hash] = checkpoint_data
-        self._save_metadata(metadata)
-        
-        return checkpoint_data
+        try:
+            # We have the lock, perform the operation
+            os.close(lock_fd)
+            
+            metadata = self._load_metadata()
+            
+            if project_hash not in metadata:
+                metadata[project_hash] = {}
+            
+            checkpoint_data = {
+                'timestamp': datetime.now().isoformat(),
+                'tool_name': tool_name,
+                'tool_input': tool_input,
+                'session_id': session_id,
+                'status': 'pending',
+                'files_affected': self._extract_files(tool_name, tool_input)
+            }
+            
+            metadata[project_hash][checkpoint_hash] = checkpoint_data
+            self._save_metadata(metadata)
+            
+            return checkpoint_data
+        finally:
+            # Always release the lock
+            try:
+                self.lock_file.unlink()
+            except:
+                pass
     
     def update_checkpoint_status(self, project_hash: str, checkpoint_hash: str, 
                                 status: str, tool_response: Optional[Dict] = None):
-        """Update the status of a checkpoint."""
-        metadata = self._load_metadata()
+        """Update the status of a checkpoint with file locking."""
+        self.checkpoint_base.mkdir(parents=True, exist_ok=True)
         
-        if project_hash in metadata and checkpoint_hash in metadata[project_hash]:
-            metadata[project_hash][checkpoint_hash]['status'] = status
-            metadata[project_hash][checkpoint_hash]['status_updated'] = datetime.now().isoformat()
+        # Use same locking approach
+        max_wait_time = 5.0
+        wait_interval = 0.05
+        start_time = time.time()
+        
+        while True:
+            try:
+                lock_fd = os.open(str(self.lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                break
+            except FileExistsError:
+                if time.time() - start_time > max_wait_time:
+                    try:
+                        if self.lock_file.exists():
+                            lock_stat = self.lock_file.stat()
+                            if time.time() - lock_stat.st_mtime > 10:
+                                self.lock_file.unlink()
+                                continue
+                    except:
+                        pass
+                    raise RuntimeError("Timeout waiting for metadata lock")
+                time.sleep(wait_interval)
+        
+        try:
+            os.close(lock_fd)
             
-            if tool_response:
-                metadata[project_hash][checkpoint_hash]['tool_response'] = tool_response
+            metadata = self._load_metadata()
             
-            self._save_metadata(metadata)
+            if project_hash in metadata and checkpoint_hash in metadata[project_hash]:
+                metadata[project_hash][checkpoint_hash]['status'] = status
+                metadata[project_hash][checkpoint_hash]['status_updated'] = datetime.now().isoformat()
+                
+                if tool_response:
+                    metadata[project_hash][checkpoint_hash]['tool_response'] = tool_response
+                
+                self._save_metadata(metadata)
+        finally:
+            try:
+                self.lock_file.unlink()
+            except:
+                pass
     
     def get_checkpoint_metadata(self, project_hash: str, 
                                checkpoint_hash: str) -> Optional[Dict]:
@@ -100,20 +190,50 @@ class CheckpointMetadata:
     
     def cleanup_old_metadata(self, project_hash: str, keep_count: int = 50):
         """Remove old checkpoint metadata, keeping the most recent ones."""
-        metadata = self._load_metadata()
+        # Use locking for cleanup operation
+        max_wait_time = 5.0
+        wait_interval = 0.05
+        start_time = time.time()
         
-        if project_hash not in metadata:
-            return
+        while True:
+            try:
+                lock_fd = os.open(str(self.lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                break
+            except FileExistsError:
+                if time.time() - start_time > max_wait_time:
+                    try:
+                        if self.lock_file.exists():
+                            lock_stat = self.lock_file.stat()
+                            if time.time() - lock_stat.st_mtime > 10:
+                                self.lock_file.unlink()
+                                continue
+                    except:
+                        pass
+                    raise RuntimeError("Timeout waiting for metadata lock")
+                time.sleep(wait_interval)
         
-        checkpoints = list(metadata[project_hash].items())
-        checkpoints.sort(key=lambda x: x[1]['timestamp'], reverse=True)
-        
-        if len(checkpoints) > keep_count:
-            # Remove old entries
-            for checkpoint_hash, _ in checkpoints[keep_count:]:
-                del metadata[project_hash][checkpoint_hash]
+        try:
+            os.close(lock_fd)
             
-            self._save_metadata(metadata)
+            metadata = self._load_metadata()
+            
+            if project_hash not in metadata:
+                return
+            
+            checkpoints = list(metadata[project_hash].items())
+            checkpoints.sort(key=lambda x: x[1]['timestamp'], reverse=True)
+            
+            if len(checkpoints) > keep_count:
+                # Remove old entries
+                for checkpoint_hash, _ in checkpoints[keep_count:]:
+                    del metadata[project_hash][checkpoint_hash]
+                
+                self._save_metadata(metadata)
+        finally:
+            try:
+                self.lock_file.unlink()
+            except:
+                pass
     
     def _extract_files(self, tool_name: str, tool_input: Dict) -> List[str]:
         """Extract affected file paths from tool input."""

@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-07-06
+
+### Added
+- Comprehensive test suite with 94 tests (increased from 29)
+- New test files for cleanup script, restore script, and integration testing
+- Test utilities module for shared test functionality
+- Improved pattern matching for file exclusions with proper glob support
+- Enhanced error handling and robustness throughout the codebase
+- Better support for complex file patterns in configuration
+- Thread synchronization for concurrent checkpoint operations
+
+### Changed
+- Significantly improved test coverage across all modules
+- Enhanced configuration validation and edge case handling
+- Improved metadata operations with better error recovery
+- Refined git operations for better reliability
+- Updated cleanup script with more robust handling
+
+### Fixed
+- Concurrent checkpoint creation race conditions
+- Pattern matching for directory exclusions (e.g., `node_modules/`)
+- Various edge cases discovered through comprehensive testing
+
 ## [1.1.2] - 2025-07-02
 
 ### Fixed
